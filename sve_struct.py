@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import bpy
 import re
 
 from typing import Callable
 from .utility import get_from_path, add_driver, remove_driver,  create_none_img
 from .globals import G
+from math import radians
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -103,7 +103,7 @@ class typeC:
         def setter(effect, prop:str, default: Callable, *args): return
         @staticmethod
         def getter(effect, prop:str) -> tuple: return tuple()
-        # def getter_to_str(_, effect: 'effectC', prop:str) -> str: return ''
+        
         def getter_to_str(self, effect: 'effectC', prop:str) -> str: 
             return self.to_str( *self.getter(effect, prop) )
 
@@ -124,8 +124,6 @@ class typeC:
         @staticmethod
         def getter(effect: 'effectC', prop:str) -> tuple:
             return (effect.effect[prop],)
-        # def getter_to_str(effect: 'effectC', prop:str) -> str:
-        #     return sve.typeC.getter_to_str(effect, prop, __class__)
     use = use()
 
     class dualfloat(_base):
@@ -140,19 +138,17 @@ class typeC:
             match len(args):
                 case 0:
                     default0 = default(prop)
-                    effect[prop] = default0
                     get_from_path(effect, sve.props[prop].path, lambda base, prop: setattr(base, prop, default0) )
+                    effect[prop] = default0
                 case 1:
-                    effect[prop] = args[0]
                     get_from_path(effect, sve.props[prop].path, lambda base, prop: setattr(base, prop, args[0]) )
-                case 2:
                     effect[prop] = args[0]
-                    get_from_path(effect, sve.props[prop].path, lambda base, prop: setattr(base, prop, args[1]) )
+                case 2:
+                    get_from_path(effect, sve.props[prop].path, lambda base, prop: setattr(base, prop, args[0]) )
+                    effect[prop] = args[1]
         @staticmethod
         def getter(effect: 'effectC', prop:str) -> tuple:
             return effect.get_values( prop )
-        # def getter_to_str(effect: 'effectC', prop:str) -> str:
-        #     return sve.typeC.getter_to_str(effect, prop, __class__)
     dualfloat = dualfloat()
 
     class float(_base):
@@ -191,6 +187,7 @@ class sve:
     use_opacity = 'use_opacity'
     noise_erraticness = 'noise_erraticness'
     noise_radius = 'noise_radius'
+    noise_rotation_range = 'noise_rotation_range'
     noise_seed = 'noise_seed'
 
     effect_pre = 'sveeffect_'
@@ -282,6 +279,10 @@ class sve:
             ),
             sve.noise_radius: self.propC(
                 id_properties= {'subtype': 'NONE', 'min': 0.0, 'max': 1000.0, 'step': 100.0},
+                atype = typeC.float,
+            ),
+            sve.noise_rotation_range: self.propC(
+                id_properties= {'subtype': 'NONE', 'min': 0.0, 'max': 360.0, 'step': 100.0},
                 atype = typeC.float,
             ),
             sve.noise_seed: self.propC(
@@ -429,7 +430,6 @@ class anim_transform(anim_base):
         row = col.row(align=True)
         row.label(text='Editing')
         row.menu(G.SEQUENCER_PT_SVEEffects_startend, text= (['Start','End'])[effect[sve.startend]] )
-        # row.menu_contents(G.SEQUENCER_PT_SVEEffects_startend)
 
         col = layout.column(align=True)
         col.prop(effect, '["%s"]'%(sve.use_offset), text='Use offset')
@@ -472,13 +472,11 @@ class anim_shake(anim_base):
         super().__init__()
         self.name = 'Shake'
         self.props = [
-            sve.use_offset, sve.use_scale, 
-            sve.use_rotation, sve.use_opacity, 
+            sve.use_offset, sve.use_scale, sve.use_opacity, 
             sve.noise_erraticness, sve.noise_radius, sve.noise_seed]
         self.defaults = {
             sve.use_offset: True,
             sve.use_scale: False,
-            sve.use_rotation: False,
             sve.use_opacity: False,
             sve.noise_erraticness: 0.5,
             sve.noise_radius: 10.0,
@@ -501,7 +499,6 @@ class anim_shake(anim_base):
         self.prop_update = {
             sve.use_offset: sve_use_update(sve.use_offset),
             sve.use_scale: sve_use_update(sve.use_scale),
-            sve.use_rotation: sve_use_update(sve.use_rotation),
             sve.use_opacity: sve_use_update(sve.use_opacity),
             sve.noise_erraticness: update,
             sve.noise_radius: update,
@@ -512,7 +509,6 @@ class anim_shake(anim_base):
         col = layout.column(align=True)
         col.prop(effect, '["%s"]'%(sve.use_offset), text='Use offset')
         col.prop(effect, '["%s"]'%(sve.use_scale), text='Use scale')
-        col.prop(effect, '["%s"]'%(sve.use_rotation), text='Use rotation')
         col.prop(effect, '["%s"]'%(sve.use_opacity), text='Use opacity')
 
         col = layout.column(align=True)
@@ -546,6 +542,70 @@ class anim_shake(anim_base):
             'offset': G.set_random * sve.getattr(effect.effect, sve.noise_seed, 0.5) * 1000.0,
         }
 anim_shake = anim_shake()
+
+class anim_shake_rotation(anim_base):
+    def __init__(self):
+        super().__init__()
+        self.name = 'Shake Rotation'
+        self.props = [
+            sve.use_rotation, 
+            sve.noise_erraticness, sve.noise_rotation_range, sve.noise_seed]
+        self.defaults = {
+            sve.use_rotation: True,
+            sve.noise_erraticness: 0.5,
+            sve.noise_rotation_range: 10.0,
+            sve.noise_seed: 0.5,
+        }
+        def sve_use_update(use: str):
+            paths = sve.props[use].use
+            def updater(effect: 'effectC', value):
+                if value:
+                    for path in paths:
+                        effect.add_to_fcurve(path)
+                else:
+                    for path in paths:
+                        effect.remove_from_fcurve(path)
+            return updater
+        def update(effect: 'effectC', value):
+            for fc in effect.fcurves:
+                fc.modifiers_value_recalc()
+
+        self.prop_update = {
+            sve.use_rotation: sve_use_update(sve.use_rotation),
+            sve.noise_erraticness: update,
+            sve.noise_rotation_range: update,
+            sve.noise_seed: update,
+        }
+
+    def layout(self, layout, effect):
+        col = layout.column(align=True)
+        col.prop(effect, '["%s"]'%(sve.noise_erraticness), text='Erraticness')
+        col = layout.column(align=True)
+        col.prop(effect, '["%s"]'%(sve.noise_rotation_range), text='Range')
+        col = layout.column(align=True)
+        col.prop(effect, '["%s"]'%(sve.noise_seed), text='Seed')
+
+
+    def new_effectstrip(self, sequences, name, channel, frame_start): 
+        filepath = create_none_img()
+        effectstrip = sequences.new_image(name, filepath, channel, frame_start)
+        effectstrip.channel = channel
+
+        return effectstrip
+    
+    def init(self, effect: 'effectC'): 
+        for path in [sve.offset_x, sve.offset_y, sve.scale_x, sve.scale_y, sve.rotation]:
+            add_driver(effect.effect, sve.props[path].path, sve.props[path].path)
+
+    
+    def modifier(self, effect: 'effectC'):
+        return {
+            'type': 'NOISE',
+            'scale': 0.5 + 20.0 * (1.0 - sve.getattr(effect.effect, sve.noise_erraticness, 0.5)),
+            'strength': radians(sve.getattr(effect.effect, sve.noise_rotation_range, 10.0)),
+            'offset': G.set_random * sve.getattr(effect.effect, sve.noise_seed, 0.5) * 1000.0,
+        }
+anim_shake_rotation = anim_shake_rotation()
 
 class anim_opacity(anim_base):
     def __init__(self):

@@ -5,29 +5,30 @@ import re
 from traceback import format_exc
 from .sve_struct import sve, anim_base, modifier_default
 from .effect_fcurve import effectC, fcurveC
-from .utility import printc, get_by_area, immutable_change, driver_to_zero, get_from_path
-from .bpy_ctypes import move_sequence
+from .utility import printc, get_by_area, immutable_change, driver_to_zero, \
+    get_from_path, create_none_img, add_driver, remove_driver, fcurve_paths
 from .globals import G
 
 
 
 def lock_tempscene():
-    tempscene = bpy.data.scenes[G.TEMPSCENE]
-    bpy.msgbus.clear_by_owner(G.TEMPSCENE)
+    # tempscene = bpy.data.scenes[G.TEMPSCENE]
+    scene = bpy.context.scene
+    bpy.msgbus.clear_by_owner(scene)
 
     ### PROPERTY LOCKING - START
-    for strip in tempscene.sequence_editor.sequences_all:
+    for strip in scene.sequence_editor.sequences:
         bpy.msgbus.subscribe_rna(
             key=strip.path_resolve('lock',False),
-            owner=tempscene, args=(1,), options={'PERSISTENT',},
+            owner=scene, args=(1,), options={'PERSISTENT',},
             notify=immutable_change(strip, 'lock', True) )
 
     for channel_name in ['Channel 1','Channel 2']:
-        channel = tempscene.sequence_editor.channels[channel_name]
+        channel = scene.sequence_editor.channels[channel_name]
         channel.lock = True
         bpy.msgbus.subscribe_rna(
             key=channel.path_resolve('lock',False),
-            owner=tempscene, args=(1,), options={'PERSISTENT',},
+            owner=scene, args=(1,), options={'PERSISTENT',},
             notify=immutable_change(channel, 'lock', True) )
     ### PROPERTY LOCKING - END
 
@@ -35,11 +36,25 @@ def lock_tempscene():
     properties = ['transform.offset_x', 'transform.offset_y', 'transform.rotation', 
                   'transform.origin', 'transform.scale_x', 'transform.scale_y', 
                   'use_flip_x', 'use_flip_y', 'crop.max_x', 'crop.max_y', 'crop.min_x', 'crop.min_y', ]
-    for strip in tempscene.sequence_editor.sequences_all:
-        if strip.type == 'SCENE':
+    for strip in scene.sequence_editor.sequences:
+        if strip.channel == 1:
             for prop in properties:
                 driver_to_zero(strip, prop.split('.'))
             break
+
+    def notify(*args, **kwargs):
+        if G.orig_strip:
+            G.orig_strip.transform.offset_x += 0.0
+            G.orig_strip.transform.offset_y += 0.0
+    
+    bpy.msgbus.clear_by_owner(G.edit_strip)
+
+    for ppath in fcurve_paths:
+        bpy.msgbus.subscribe_rna(
+            key=get_from_path(G.edit_strip, ppath, lambda base,prop: base.path_resolve(prop, False) ),
+            owner=G.edit_strip, args=(1,), options={'PERSISTENT',},
+            notify=notify )
+
 
 def stringify_effect(effect: effectC, offset: int):
     string = 's' + str(effect.start - offset) + \
@@ -124,73 +139,44 @@ class SVEEffects_CloseEditor(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.window.scene.name == G.TEMPSCENE and context.active_sequence_strip
+        # return context.window.scene.name == G.TEMPSCENE
+        return G.edit_strip != None and sve.scene_source in G.edit_strip and G.edit_strip[sve.scene_source] == context.scene.name
     
     def cancel(self, context):
         return
 
     def execute(self, context):
         for aa in [sve.strip_source, sve.scene_source]:
-            if aa not in G.edit_strip: 
-                if len(bpy.data.scenes) > 1:
-                    context.window.scene = [scene for scene in bpy.data.scenes if scene.name != G.TEMPSCENE][0]
-                    bpy.data.scenes.remove(bpy.data.scenes[G.TEMPSCENE])
-                    return {'CANCELLED'}
+            if aa not in G.edit_strip:
+                return {'CANCELLED'}
         
-        if G.edit_strip[sve.scene_source] not in bpy.data.scenes:
+        scene = context.scene
+        if G.edit_strip[sve.scene_source] != scene.name:
             return {'CANCELLED'}
-        orig_scene = bpy.data.scenes[ G.edit_strip[sve.scene_source] ]
 
         SEQUENCE_EDITOR = get_by_area("SEQUENCE_EDITOR")
+        bpy.msgbus.clear_by_owner(G.edit_strip)
 
 
-        if not G.edit_strip[sve.strip_source] in orig_scene.sequence_editor.sequences:
-            for strip in context.scene.sequence_editor.sequences_all:
-                strip.select = False
-            G.edit_strip.select = True
-            with context.temp_override(area=SEQUENCE_EDITOR, selected_sequences= [G.edit_strip]):
-                bpy.ops.sequencer.duplicate()
-                orig_strip = context.active_sequence_strip
-                
-            move_sequence(context.scene, orig_scene, orig_strip )
-            orig_scene.sequence_editor.active_strip = orig_strip
-            orig_scene.sequence_editor.active_strip.name = G.edit_strip[sve.strip_source]
-            orig_strip = orig_scene.sequence_editor.active_strip
-
-            if sve.strip_source in orig_strip: del orig_strip[sve.strip_source]
-            if sve.scene_source in orig_strip: del orig_strip[sve.scene_source]
-        else:
-            orig_strip = orig_scene.sequence_editor.sequences[ G.edit_strip[sve.strip_source] ]
-
-        context.window.scene = orig_scene
-
-        orig_strip.lock = False
-        orig_strip.mute = False
-        orig_strip.channel = orig_strip.channel
-
-        props = orig_strip.id_properties_ensure().to_dict()
+        for ppath in fcurve_paths:
+            remove_driver(G.orig_strip, ppath)
+            
+        props = G.orig_strip.id_properties_ensure().to_dict()
         for pp in props:
             if pp[:len(sve.effect_pre)] == sve.effect_pre:
-                del orig_strip[pp]
+                del G.orig_strip[pp]
 
         for _, effect in effectC.all.items():
-            orig_strip[sve.effect_pre + effect.name] = stringify_effect(effect, orig_strip.frame_final_start)
-
-        if not orig_scene.animation_data:
-            orig_scene.animation_data_create()
-        if not orig_scene.animation_data.action:
-            orig_scene.animation_data.action = bpy.data.actions.new(orig_scene.name)
-
-        action = orig_scene.animation_data.action
+            G.orig_strip[sve.effect_pre + effect.name] = stringify_effect(effect, G.orig_strip.frame_final_start)
 
         fcurveC.recalc_all()
         
         for _, fcurve in fcurveC.all.items():
             fc_kfp = fcurve.fcurve.keyframe_points
             fc_mod = fcurve.fcurve.modifiers
-            data_path = get_from_path(orig_strip, fcurve.path, lambda base, prop: base.path_from_id(prop))
-            ofcurve = action.fcurves.find( data_path )
-            if not ofcurve: ofcurve = action.fcurves.new( data_path )
+            data_path = get_from_path(G.orig_strip, fcurve.path, lambda base, prop: base.path_from_id(prop))
+            ofcurve = G.action.fcurves.find( data_path )
+            if not ofcurve: ofcurve = G.action.fcurves.new( data_path )
             ofc_kfp = ofcurve.keyframe_points
             ofc_mod = ofcurve.modifiers
             ofc_kfp.clear()
@@ -212,7 +198,34 @@ class SVEEffects_CloseEditor(bpy.types.Operator):
                 newmod.frame_start = modf.frame_start
                 newmod.frame_end = modf.frame_end
 
-        bpy.data.scenes.remove(bpy.data.scenes[G.TEMPSCENE])
+        G.edit_strip = None
+        G.orig_strip = None
+        G.action = None
+        bpy.msgbus.clear_by_owner(scene)
+        for channel_name in ['Channel 1','Channel 2']:
+            channel = scene.sequence_editor.channels[channel_name]
+            channel.lock = False
+        for seq in list(scene.sequence_editor.sequences):
+            if seq.channel == 1:
+                seq.select = True
+                scene.sequence_editor.active_strip = seq
+            else:
+                for fc in list(scene.animation_data.drivers):
+                    if 'sequences_all["%s"]'%(seq.name) in fc.data_path:
+                        scene.animation_data.drivers.remove(fc)
+                scene.sequence_editor.sequences.remove(seq)
+        
+
+        for fc in list(scene.animation_data.drivers):
+            if 'sequences_all["%s"]'%(scene.sequence_editor.active_strip.name) in fc.data_path:
+                scene.animation_data.drivers.remove(fc)
+
+        with context.temp_override(area=SEQUENCE_EDITOR):
+            bpy.ops.sequencer.meta_separate()
+            bpy.ops.anim.previewrange_clear()
+        
+        for seq in scene.sequence_editor.sequences:
+            seq.select = False
 
         return {'FINISHED'}
 
@@ -225,7 +238,7 @@ class SVEEffects_OpenEditor(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.window.scene.name != G.TEMPSCENE and context.active_sequence_strip
+        return context.active_sequence_strip and G.edit_strip == None
     
     def cancel(self, context):
         return
@@ -234,90 +247,67 @@ class SVEEffects_OpenEditor(bpy.types.Operator):
         effectC.all.clear()
         fcurveC.all.clear()
         G.strips.clear()
-        G.edit_strip = None
-        G.action = None
-        
+
         SEQUENCE_EDITOR = get_by_area("SEQUENCE_EDITOR")
-        
-        if not SEQUENCE_EDITOR or context.window.scene.name == G.TEMPSCENE: return {'CANCELLED'}
 
-        original_scene = context.window.scene
+        scene = context.window.scene
+        sequences = scene.sequence_editor.sequences
+        G.orig_strip = scene.sequence_editor.active_strip
 
-        sourceseq = context.active_sequence_strip
-        with context.temp_override(area=SEQUENCE_EDITOR, selected_sequences= [sourceseq]):
-            bpy.ops.sequencer.duplicate()
-            G.edit_strip = context.active_sequence_strip
+        for strip in sequences:
+            strip.select = True
 
-        if original_scene.animation_data and original_scene.animation_data.action:
-
-            path_from_id = G.edit_strip.path_from_id()
-            for fcurve in list(original_scene.animation_data.action.fcurves):
-                if path_from_id in fcurve.data_path:
-                    original_scene.animation_data.action.fcurves.remove(fcurve)
-
-
-        G.edit_strip.select = False
-        original_scene.sequence_editor.active_strip = sourceseq
-        sourceseq.select = False
-
-        if G.TEMPSCENE in bpy.data.scenes:
-            bpy.data.scenes.remove(bpy.data.scenes[G.TEMPSCENE])
-            
-        bpy.ops.scene.new(type='EMPTY')
-        bpy.data.scenes[-1].name = G.TEMPSCENE
-        bpy.data.scenes[G.TEMPSCENE].sequence_editor_create()
-        tempscene = bpy.data.scenes[G.TEMPSCENE]
-        
         with context.temp_override(area=SEQUENCE_EDITOR):
-            sourceseq.mute = True
-            bpy.ops.sequencer.scene_strip_add(frame_start=1,scene=original_scene.name)
-        context.active_sequence_strip.scene_input = 'SEQUENCER'
-        context.active_sequence_strip.lock = True
-        
-        G.strips[context.active_sequence_strip.as_pointer()] = context.active_sequence_strip
-        move_sequence(original_scene, tempscene, G.edit_strip )
-        
-        context.scene.sequence_editor.active_strip = G.edit_strip
-        context.active_sequence_strip.name = sourceseq.name
-        context.active_sequence_strip.channel = 2
-        context.active_sequence_strip.lock = True
-        context.active_sequence_strip.mute = False
-        G.edit_strip = context.scene.sequence_editor.active_strip
-        G.strips[G.edit_strip.as_pointer()] = G.edit_strip
+            bpy.ops.sequencer.meta_make()
+            background = scene.sequence_editor.active_strip
+            background.channel = 1
+
+        filepath = create_none_img(G.orig_strip)
+        G.edit_strip = sequences.new_image(G.orig_strip.name + '_proxy', filepath, 2, G.orig_strip.frame_final_start)
+        G.edit_strip.channel = 2
+        G.edit_strip.frame_final_duration = G.orig_strip.frame_final_duration
+
+        G.strips[background.as_pointer] = background
+        G.strips[G.edit_strip.as_pointer] = G.edit_strip
+
+        if scene.animation_data == None:
+            scene.animation_data_create()
+        if scene.animation_data.action == None:
+            bpy.data.actions.new(scene.name)
+            scene.animation_data.action = bpy.data.actions[scene.name]
+        G.action = scene.animation_data.action
+        for fc in list(G.action.fcurves):
+            if '"%s"'%(G.orig_strip.name) in fc.data_path:
+                G.action.fcurves.remove(fc)
+
+        for ppath in fcurve_paths:
+            srcval = get_from_path(G.orig_strip, ppath, lambda base, prop: getattr(base, prop))
+            get_from_path(G.edit_strip, ppath, lambda base, prop: setattr(base, prop, srcval))
+            add_driver(G.orig_strip, ppath, ppath)
 
         lock_tempscene()
             
         with context.temp_override(area=SEQUENCE_EDITOR):
-            for strip in tempscene.sequence_editor.sequences_all:
+            for strip in scene.sequence_editor.sequences_all:
                 strip.select = False
             G.edit_strip.select = True
             bpy.ops.sequencer.set_range_to_strips(preview=True)
 
-        tempscene.animation_data_create()
-        if G.TEMPACTION in bpy.data.actions:
-            bpy.data.actions.remove(bpy.data.actions[G.TEMPACTION])
-
-        G.action = bpy.data.actions.new(G.TEMPACTION)
-        G.action.frame_start = G.edit_strip.frame_final_start
-        G.action.frame_end = G.edit_strip.frame_final_end
-        tempscene.animation_data.action = G.action
-
-        props = sourceseq.id_properties_ensure().to_dict()
+        props = G.orig_strip.id_properties_ensure().to_dict()
         for pp in props:
             if sve.effect_pre in pp:
                 parsed = parse_effect(props[pp], G.edit_strip.frame_final_start)
                 name = pp[len(sve.effect_pre):]
                 if parsed:
-                    effectC(name, tempscene, parsed)
+                    effectC(name, scene, parsed)
                     
-        
-        props = G.edit_strip.id_properties_ensure().to_dict()
-        for pp in props:
-            if pp[:len(sve.effect_pre)] == sve.effect_pre:
-                del G.edit_strip[pp]
-        G.edit_strip[sve.strip_source] = sourceseq.name
-        G.edit_strip[sve.scene_source] = original_scene.name
+        G.edit_strip[sve.strip_source] = G.orig_strip.name
+        G.edit_strip[sve.scene_source] = scene.name
         fcurveC.recalc_all()
+
+        for seq in scene.sequence_editor.sequences:
+            seq.select = False
+
         return {'FINISHED'}
 
 
@@ -336,28 +326,28 @@ class SVEEffects_Tester(bpy.types.Operator):
 
     def execute(self, context):
         if context.active_sequence_strip == None: return {'CANCELLED'}
-        try:
-            # def funcs():
-            #     printc('thread1')
-            #     sleep(3)
-            #     printc('thread2')
-            # target = bpy.data.scenes['Scene'].sequence_editor.sequences_all["Color"]  
-            # printc('effectC.all ' + str(effectC.all))
-            # printc('fcurveC.all ' + str(fcurveC.all))
-            # printc('G.strips ' + str(G.strips))
-            # printc('G.edit_strip ' + str(G.edit_strip))
-            # printc('G.action ' + str(G.action))
-            # printc('G.TEMPSCENE ' + str(G.TEMPSCENE))
-            # if sve.startend in  context.active_sequence_strip:
-            # effect = context.active_sequence_strip
+
+        # meta = context.scene.sequence_editor.sequences.new_meta('test', 4, context.scene.frame_current)
+        # srcscene = bpy.data.scenes[G.edit_strip[sve.scene_source]]
+        # to_meta_sequence(srcscene, meta)
+        # try:
+        #     # target = bpy.data.scenes['Scene'].sequence_editor.sequences_all["Color"]  
+        #     # printc('effectC.all ' + str(effectC.all))
+        #     # printc('fcurveC.all ' + str(fcurveC.all))
+        #     # printc('G.strips ' + str(G.strips))
+        #     # printc('G.edit_strip ' + str(G.edit_strip))
+        #     # printc('G.action ' + str(G.action))
+        #     # printc('G.TEMPSCENE ' + str(G.TEMPSCENE))
+        #     # if sve.startend in  context.active_sequence_strip:
+        #     # effect = context.active_sequence_strip
             
-            # printc(str(context.area))
-            # bpy.app.timers.register(lambda: printc(str(context.area)), first_interval=3, persistent= False)
-            printc(G.dir)
-            pass
-        except Exception as exc:
-            printc(str(exc))
-            printc(str(format_exc()))
+        #     # printc(str(context.area))
+        #     # bpy.app.timers.register(lambda: printc(str(context.area)), first_interval=3, persistent= False)
+        #     printc(G.dir)
+        #     pass
+        # except Exception as exc:
+        #     printc(str(exc))
+        #     printc(str(format_exc()))
             
 
         return {'FINISHED'}
@@ -379,7 +369,7 @@ class SVEEffects_AddEffect(bpy.types.Operator):
         return
     
     def execute(self, context):
-        if G.edit_strip == None or G.action == None or self.effect_type not in anim_base.all:
+        if G.edit_strip == None or self.effect_type not in anim_base.all:
             return {'CANCELLED'}
         for sequence in context.scene.sequence_editor.sequences:
             sequence.select = False
@@ -447,7 +437,7 @@ class SVEEffects_Menu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         for tt in anim_base.all:
-            layout.operator(SVEEffects_AddEffect.bl_idname, text = tt).effect_type = tt
+            layout.operator(SVEEffects_AddEffect.bl_idname, text = anim_base.all[tt].name).effect_type = tt
         # layout.operator(SVEEffects_Tester.bl_idname, text=SVEEffects_Tester.bl_label)
 
     @classmethod

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 import bpy
 from typing import Callable
-from random import seed, random
 from .sve_struct import sve, anim_base
-from .utility import get_from_path, change_checker, printc
+from .utility import get_from_path, printc
 from .globals import G
 from .bpy_ctypes import calc_bezier
     
@@ -22,9 +21,6 @@ class effectC:
             if props.get('type','?') in anim_base.all:
                 return super(__class__, cls).__new__(cls)
             return None
-            
-            
-
 
     def __init__(self, *args) -> None:
         def init3(self: 'effectC', name: str, scene, props: dict = {}) -> None:
@@ -52,6 +48,10 @@ class effectC:
         
         self.fcurves = set()
         self.all[self.effect.as_pointer()] = self
+
+        for fc in list(bpy.context.scene.animation_data.drivers):
+            if 'sequences_all["%s"]'%(self.effect.name) in fc.data_path:
+                bpy.context.scene.animation_data.drivers.remove(fc)
 
         for prop, call in self.prop_update.items():
             call(self, self.effect[prop])
@@ -209,7 +209,6 @@ class fcurveC:
     keyframes: list[rangeC]
     modifiers: list[comparerC]
     datapath: str
-    check_change: change_checker
     default: float
 
     def __init__(self, sve_path: str) -> None:
@@ -220,14 +219,13 @@ class fcurveC:
         self.effects = set()
         self.keyframes = []
         self.modifiers = []
-        self.check_change = change_checker()
-        self.check_change(self.value)
         self.all[sve_path] = self
         self.default = self.value
     
         def notify(*args, **kwargs):
             if G.edit_strip.select or bpy.context.active_sequence_strip == G.edit_strip:
                 self.if_not_on_fcurve()
+                pass
             # printc('change '+self.sve_path)
             pass
         
@@ -291,7 +289,7 @@ class fcurveC:
             for frame, value in rr().items():
                 add(frame, value)
         
-        if len(self.keyframes) == 0:
+        if len(self.keyframes) == 0 and len(self.modifiers) > 0:
             add(G.edit_strip.frame_start, self.default )
 
         
@@ -312,11 +310,9 @@ class fcurveC:
                 fcurve_kfp[iik].handle_right = [float(keys[iik]) + 5.0, frames[keys[iik]], ]
 
         fcurve_kfp.sort()
-        self.check_change(self.value)
     
     def modifiers_value_recalc(self):
-        seed(id(self.fcurve))
-        G.set_random = random()
+        G.set_random = id(self.fcurve)
         fmod = list(self.fcurve.modifiers)
         smod = self.modifiers.copy()
         for ffm in fmod.copy():
@@ -336,13 +332,6 @@ class fcurveC:
                 ssm.effect.atype.to_modifier(ffm, ssm.effect)
                 fmod.remove(ffm)
                 smod.remove(ssm)
-
-                # if ssm[3]['type'] != ffm.type \
-                #     or ssm[0] != ffm.frame_start \
-                #     or ssm[1] != ffm.frame_end: continue
-                # ssm[2].atype.to_modifier(ffm, ssm[2])
-                # fmod.remove(ffm)
-                # smod.remove(ssm)
         for ffm in fmod:
             self.fcurve.modifiers.remove(ffm)
 
@@ -362,20 +351,16 @@ class fcurveC:
             self.effects.remove(effect)
 
     def if_not_on_fcurve(self):
-        # evalue = self.evaluate
         curr = self.value
-        prev = self.check_change.old_value
-        if not self.check_change(curr): return
+        prev = self.evaluate
+        if curr == prev: return
         diff = curr - prev
         for eff in self.effects:
             if not eff.modifier:
                 vals = eff.get_values(self.sve_path)
                 eff.set_values(self.sve_path, vals[0] + diff, vals[1] + diff)
-        self.default += diff
+        self.default = curr
         self.keyframes_value_recalc()
-
-        # self.value = evalue
-
 
     @property
     def evaluate(self):
@@ -384,10 +369,6 @@ class fcurveC:
     @property
     def value(self):
         return get_from_path(G.edit_strip, self.path, lambda base, prop: getattr(base, prop) )
-    
-    # @value.setter
-    # def value(self, val):
-    #     get_from_path(G.edit_strip, self.path, lambda base, prop: setattr(base, prop, val) )
     
     def recalc_all(self = None):
         for _, fcurve in fcurveC.all.items():

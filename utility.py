@@ -100,22 +100,39 @@ def try_def(call: Callable):
     return to_call
 
 def add_driver(effect, driver_path: list, data_path: list):
-    fc = get_from_path(effect, driver_path, lambda base, prop: base.driver_add( prop )) 
-    fc.driver.type = 'AVERAGE'
-    var = fc.driver.variables.new()
-    var.type = 'SINGLE_PROP'
-    var.targets[0].data_path = get_from_path(G.edit_strip, data_path, lambda base, prop: base.path_from_id( prop )) 
-    var.targets[0].id_type = 'SCENE'
-    var.targets[0].id = bpy.data.scenes[G.TEMPSCENE]
-    fc.driver.is_valid = True
+    drivers = get_from_path(effect, driver_path, lambda base, prop: base.driver_add( prop )) 
+    dpath = get_from_path(G.edit_strip, data_path, lambda base, prop: base.path_from_id( prop )) 
+    if isinstance(drivers, list):
+        for index, fc in enumerate(drivers):
+            fc.driver.type = 'AVERAGE'
+            fc.array_index = index
+            var = fc.driver.variables.new()
+            var.type = 'SINGLE_PROP'
+            var.targets[0].data_path = dpath + '[%d]'%(index)
+            var.targets[0].id_type = 'SCENE'
+            var.targets[0].id = bpy.context.scene
+            fc.driver.is_valid = True
+    else:
+        fc = drivers
+        fc.driver.type = 'AVERAGE'
+        var = fc.driver.variables.new()
+        var.type = 'SINGLE_PROP'
+        var.targets[0].data_path = dpath
+        var.targets[0].id_type = 'SCENE'
+        var.targets[0].id = bpy.context.scene
+        fc.driver.is_valid = True
+
+
+
 
 def remove_driver(effect, driver_path: list):
     get_from_path(effect, driver_path, lambda base, prop: base.driver_remove( prop ))
 
-def create_none_img():
-    if G.edit_strip.type in ['IMAGE','MOVIE'] and len(G.edit_strip.elements) > 0:
-        w_img = int(G.edit_strip.elements[0].orig_width)
-        h_img = int(G.edit_strip.elements[0].orig_height)
+def create_none_img(srcstrip = None):
+    strip = srcstrip if srcstrip != None else G.edit_strip
+    if strip.type in ['IMAGE','MOVIE'] and len(strip.elements) > 0:
+        w_img = int(strip.elements[0].orig_width)
+        h_img = int(strip.elements[0].orig_height)
     else:
         w_img = int(bpy.context.scene.render.resolution_x)
         h_img = int(bpy.context.scene.render.resolution_y)
@@ -140,3 +157,26 @@ class change_checker():
             self.old_value = new_value
             return True
         return False
+
+fcurve_paths = [
+    ['transform', 'offset_x',],
+    ['transform', 'offset_y',],
+    ['transform', 'rotation',],
+    ['transform', 'origin',],
+    ['transform', 'scale_x',],
+    ['transform', 'scale_y',],
+    ['transform', 'filter',],
+    ['use_flip_x',],
+    ['use_flip_y',],
+    ['blend_alpha',],
+    ['blend_type',],
+    ['strobe',],
+    ['use_reverse_frames',],
+    ['color_saturation',],
+    ['color_multiply',],
+    ['use_float',],
+    ['crop', 'max_x',],
+    ['crop', 'max_y',],
+    ['crop', 'min_x',],
+    ['crop', 'min_y',],
+]

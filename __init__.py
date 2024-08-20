@@ -17,7 +17,7 @@ from gpu_extras.batch import batch_for_shader
 
 # from . import bpy_ctypes, utility, sve_struct, operators, globals
 from .bpy_ctypes import get_running_op
-from .utility import change_checker, dorot, printc, try_def, bool_or
+from .utility import change_checker, dorot, printc, try_def, bool_or, get_by_area
 from .effect_fcurve import effectC, fcurveC
 from .sve_struct import sve, anim_base
 from .operators import \
@@ -34,8 +34,7 @@ from .operators import \
 from .globals import G
 
 
-def remove_strip(strip):
-    sPointer = strip.as_pointer()
+def remove_strip(sPointer):
     if sPointer in effectC.all:
         for fcurve in effectC.all[sPointer].fcurves:
             fcurve.remove_effect(effectC.all[sPointer])
@@ -45,20 +44,19 @@ def remove_strip(strip):
 
 def add_strip(strip):
     if sve.type in strip and strip[sve.type] in anim_base.all:
-        if strip.as_pointer() not in effectC.all:
-            effectC(strip)
+        effectC(strip)
     else:
         G.strips[strip.as_pointer()] = strip
 
 # if an effect strip gets deleted/undeleted or non-effect strip is added/deleted, this keeps track
 def check_strip_ledger():
-    sequences = bpy.data.scenes[G.TEMPSCENE].sequence_editor.sequences
-    if G.TEMPSCENE in bpy.data.scenes and len(G.strips) != len(sequences):
+    sequences = bpy.context.scene.sequence_editor.sequences
+    if len(G.strips) != len(sequences):
         if len(G.strips) > len(sequences):
             seqPointers = [seq.as_pointer() for seq in sequences]
             for st in G.strips.copy():
                 if st not in seqPointers:
-                    remove_strip(G.strips[st])
+                    remove_strip(st)
         elif len(G.strips) < len(sequences):
             for seq in sequences:
                 if seq.as_pointer() not in G.strips:
@@ -86,12 +84,12 @@ check_effect_prop_change = check_effect_prop_change()
 
 class check_running_op:
     def frame_update(self, effects = None):
-        if G.edit_strip:
-            G.edit_strip.transform.offset_x += 0.0
-            G.edit_strip.transform.offset_y += 0.0
-        for _, fc in fcurveC.all.items():
-            fc.check_change(fc.value)
-        
+        # if G.edit_strip:
+        #     G.edit_strip.transform.offset_x += 0.0
+        #     G.edit_strip.transform.offset_y += 0.0
+        if G.orig_strip:
+            G.orig_strip.transform.offset_x += 0.0
+            G.orig_strip.transform.offset_y += 0.0
 
     def transform_value(self, sveusage: str):
         usages = sve.props[sveusage].use
@@ -104,7 +102,7 @@ class check_running_op:
                 for upath in usages:
                     fcurveC.all[upath].keyframes_value_recalc()
                     
-                self.frame_update()
+            self.frame_update()
         return doer
 
     def transform_frame(self):
@@ -162,7 +160,7 @@ class check_running_op:
 check_running_op = check_running_op()
 
 def draw_callback_seq_preview():
-    if bpy.context.scene.name != G.TEMPSCENE or G.edit_strip == None: return
+    if G.edit_strip == None: return
     
     check_effect_prop_change()
     check_strip_ledger()
@@ -225,12 +223,12 @@ def draw_callback_seq_preview():
 
 
 def effects_scene_menu(self, context):
-    if context.scene.name == G.TEMPSCENE:
+    if G.edit_strip != None:
         self.layout.menu(SVEEffects_Menu.bl_idname, text=SVEEffects_Menu.bl_label)
 
 acceptable_types = ['IMAGE', 'META', 'SCENE', 'MOVIE', 'MOVIECLIP', 'MASK', 'COLOR', 'TEXT' ]
 def main_scene_menu(self, context):
-    if context.scene.name != G.TEMPSCENE:
+    if G.edit_strip == None:
         if context.active_sequence_strip and context.active_sequence_strip.type in acceptable_types:
             self.layout.operator(SVEEffects_OpenEditor.bl_idname, text =SVEEffects_OpenEditor.bl_label)
     else:
@@ -251,62 +249,60 @@ def reinstate():
     # reload(utility)
     # reload(sve_struct)
     # reload(operators)
-    G.action = None
     G.edit_strip = None
+    G.orig_strip = None
     G.strips.clear()
     effectC.all.clear()
     fcurveC.all.clear()
     add_handle(bpy.types.SpaceSequenceEditor, try_def(draw_callback_seq_preview), tuple(), 'PREVIEW', 'POST_PIXEL' )
     
-    if G.TEMPSCENE not in bpy.data.scenes: 
-        makedirs(G.dir_temp, exist_ok=True)
-        for filename in listdir(G.dir_temp):
-            filepath = G.dir_temp + '/' + filename
-            try:
-                if path.isfile(filepath) or path.islink(filepath):
-                    unlink(filepath)
-                elif path.isdir(filepath):
-                    rmtree(filepath)
-            except:
-                pass
-        return
-    if bpy.context.window.scene.name != G.TEMPSCENE:
-        bpy.data.scenes.remove(bpy.data.scenes[G.TEMPSCENE])
-        return
-    for strip in bpy.data.scenes[G.TEMPSCENE].sequence_editor.sequences:
-        if strip.channel == 2: 
-            G.edit_strip = strip
-            break
-    if not G.edit_strip:
-        if len(bpy.data.scenes) > 1:
-            bpy.context.window.scene = [scene for scene in bpy.data.scenes if scene.name != G.TEMPSCENE][0]
-            bpy.data.scenes.remove(bpy.data.scenes[G.TEMPSCENE])
-        return
+    for scene in bpy.data.scenes:
+        if scene.sequence_editor == None: continue
+        for strip in scene.sequence_editor.sequences:
+            if strip.channel == 2 and sve.strip_source in strip:
+                if strip[sve.strip_source] in scene.sequence_editor.sequences_all:
+                    G.edit_strip = strip
+                    G.orig_strip = scene.sequence_editor.sequences_all[ strip[sve.strip_source] ]
 
-    bpy.msgbus.clear_by_owner(G.edit_strip)
+                    if scene.animation_data == None:
+                        scene.animation_data_create()
+                    if scene.animation_data.action == None:
+                        bpy.data.actions.new(scene.name)
+                        scene.animation_data.action = bpy.data.actions[scene.name]
+                    G.action = scene.animation_data.action
+                    
 
-    lock_tempscene()
-    tempscene = bpy.data.scenes[G.TEMPSCENE]
-    if tempscene.animation_data == None:
-        tempscene.animation_data_create()
-    
-    if G.TEMPACTION not in bpy.data.actions:
-        bpy.data.actions.new(G.TEMPACTION)
-        bpy.data.actions[G.TEMPACTION].frame_start = G.edit_strip.frame_final_start
-        bpy.data.actions[G.TEMPACTION].frame_end = G.edit_strip.frame_final_end
-    G.action = bpy.data.actions[G.TEMPACTION]
-    tempscene.animation_data.action = G.action
-    
-        
-    for fcurve in list(G.action.fcurves):
-        G.action.fcurves.remove(fcurve)
+                    for fc in list(G.action.fcurves):
+                        if '"%s"'%(G.orig_strip.name) in fc.data_path or '"%s"'%(G.edit_strip.name) in fc.data_path:
+                            G.action.fcurves.remove(fc)
 
-    for driver in list(tempscene.animation_data.drivers):
-        tempscene.animation_data.drivers.remove(driver)
+                    lock_tempscene()
 
-    for strip in tempscene.sequence_editor.sequences:
-        add_strip(strip)
-    fcurveC.recalc_all()
+
+                    SEQUENCE_EDITOR = get_by_area("SEQUENCE_EDITOR")
+
+                    with bpy.context.temp_override(area=SEQUENCE_EDITOR):
+                        for strip0 in scene.sequence_editor.sequences:
+                            strip0.select = False
+                        G.edit_strip.select = True
+                        bpy.ops.sequencer.set_range_to_strips(preview=True)
+
+                    for strip0 in scene.sequence_editor.sequences:
+                        add_strip(strip0)
+                    fcurveC.recalc_all()
+                    return
+
+    makedirs(G.dir_temp, exist_ok=True)
+    for filename in listdir(G.dir_temp):
+        filepath = G.dir_temp + '/' + filename
+        try:
+            if path.isfile(filepath) or path.islink(filepath):
+                unlink(filepath)
+            elif path.isdir(filepath):
+                rmtree(filepath)
+        except:
+            pass
+    return
 
 
 

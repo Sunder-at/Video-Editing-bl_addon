@@ -935,6 +935,19 @@ def move_sequence(sourcescene, targetscene, sequence):
     BLI_remlink(sscene.ed.contents.seqbase, seqsource)
     BLI_addtail(tscene.ed.contents.seqbase, seqsource)
 
+def to_meta_sequence(sourcescene, metaseq):
+    sscene = Scene(sourcescene)
+    seqsource = Sequence(metaseq)
+    
+    seqsource.seqbase.first = sscene.ed.contents.seqbase.first
+    seqsource.seqbase.last = sscene.ed.contents.seqbase.last
+
+def decouple_meta_sequence(metaseq):
+    seqsource = Sequence(metaseq)
+    seqsource.seqbase.first = c_void_p()
+    seqsource.seqbase.last = c_void_p()
+
+
 def calc_bezier(v1, v2, v3, v4, point) -> float:
     def sqrt3d(dd: float) -> float:
         if dd == 0.0: return 0.0
