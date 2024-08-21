@@ -18,8 +18,8 @@ class _G:
     def TEMPACTION(self):
         return "SVE_tempAction"
     @property
-    def SEQUENCER_PT_SVEEffects_startend(self):
-        return 'SEQUENCER_PT_SVEEffects_startend'
+    def SEQUENCER_MT_SVEEffects_startend(self):
+        return 'SEQUENCER_MT_SVEEffects_startend'
     
     @property
     def set_random(self) -> float:

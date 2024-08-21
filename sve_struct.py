@@ -429,7 +429,7 @@ class anim_transform(anim_base):
         col = layout.column(align=True)
         row = col.row(align=True)
         row.label(text='Editing')
-        row.menu(G.SEQUENCER_PT_SVEEffects_startend, text= (['Start','End'])[effect[sve.startend]] )
+        row.menu(G.SEQUENCER_MT_SVEEffects_startend, text= (['Start','End'])[effect[sve.startend]] )
 
         col = layout.column(align=True)
         col.prop(effect, '["%s"]'%(sve.use_offset), text='Use offset')
@@ -646,7 +646,7 @@ class anim_opacity(anim_base):
         else:
             layout_1, layout_0 = l0 , l1
 
-        # row.menu(G.SEQUENCER_PT_SVEEffects_startend, text= (['Start','End'])[effect[sve.startend]] )
+        # row.menu(G.SEQUENCER_MT_SVEEffects_startend, text= (['Start','End'])[effect[sve.startend]] )
         col = layout.column(align=True)
         col.label(text='Opacity Start')
         layout_0(col, sve.opacity)

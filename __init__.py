@@ -26,12 +26,12 @@ from .operators import \
     SVEEffects_AddEffect,\
     SVEEffects_OpenEditor,\
     SVEEffects_CloseEditor,\
-    SVEEffects_Menu,\
+    SEQUENCER_MT_SVEEffects_Menu,\
     SVEEffects_Tester,\
     SVEEffects_AddEffect_StartEnd, \
     SEQUENCER_PT_SVE_topforce, \
     SEQUENCER_PT_SVEEffects,\
-    SEQUENCER_PT_SVEEffects_startend, \
+    SEQUENCER_MT_SVEEffects_startend, \
     lock_tempscene
 from .globals import G
 
@@ -226,7 +226,7 @@ def draw_callback_seq_preview():
 
 def effects_scene_menu(self, context):
     if G.edit_strip != None:
-        self.layout.menu(SVEEffects_Menu.bl_idname, text=SVEEffects_Menu.bl_label)
+        self.layout.menu(SEQUENCER_MT_SVEEffects_Menu.bl_idname, text=SEQUENCER_MT_SVEEffects_Menu.bl_label)
 
 acceptable_types = ['IMAGE', 'META', 'SCENE', 'MOVIE', 'MOVIECLIP', 'MASK', 'COLOR', 'TEXT' ]
 def main_scene_menu(self, context):
@@ -294,12 +294,12 @@ def reinstate():
 classes = [
     SEQUENCER_PT_SVE_topforce,
     SEQUENCER_PT_SVEEffects,
-    SEQUENCER_PT_SVEEffects_startend,
+    SEQUENCER_MT_SVEEffects_startend,
     SVEEffects_AddEffect,
     SVEEffects_AddEffect_StartEnd,
     SVEEffects_OpenEditor,
     SVEEffects_CloseEditor,
-    SVEEffects_Menu,
+    SEQUENCER_MT_SVEEffects_Menu,
     SVEEffects_Tester,
     ]
 

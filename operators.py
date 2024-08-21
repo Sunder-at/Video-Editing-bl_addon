@@ -87,7 +87,7 @@ def parse_effect(string: str, offset: int):
 
 class SVEEffects_AddEffect_StartEnd(bpy.types.Operator):
     """animate_transform start"""
-    bl_idname = "sequencer.sveeffects_animate_transform_startend"
+    bl_idname = "sequencer.sveeffects_addeffect_startend"
     bl_label = "Start/End"
     bl_options = {'REGISTER', 'UNDO'}
     startend: bpy.props.IntProperty(
@@ -117,8 +117,8 @@ class SVEEffects_AddEffect_StartEnd(bpy.types.Operator):
 
         return {'FINISHED'}
 
-class SEQUENCER_PT_SVEEffects_startend(bpy.types.Menu):
-    bl_idname = G.SEQUENCER_PT_SVEEffects_startend
+class SEQUENCER_MT_SVEEffects_startend(bpy.types.Menu):
+    bl_idname = G.SEQUENCER_MT_SVEEffects_startend
     bl_label = "Start/End"
 
     def draw(self, context):
@@ -131,7 +131,7 @@ class SEQUENCER_PT_SVEEffects_startend(bpy.types.Menu):
 
 class SVEEffects_CloseEditor(bpy.types.Operator):
     """SVEEffects_CloseEditor"""
-    bl_idname = "sequencer.sveeffects_close_editor"
+    bl_idname = "sequencer.sveeffects_closeeditor"
     bl_label = "Save Changes"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -230,7 +230,7 @@ class SVEEffects_CloseEditor(bpy.types.Operator):
 
 class SVEEffects_OpenEditor(bpy.types.Operator):
     """SVEEffects_OpenEditor"""
-    bl_idname = "sequencer.sveeffects_open_editor"
+    bl_idname = "sequencer.sveeffects_openeditor"
     bl_label = "Effects Editor"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -330,7 +330,7 @@ class SVEEffects_Tester(bpy.types.Operator):
     
 class SVEEffects_AddEffect(bpy.types.Operator):
     """animate_transform"""
-    bl_idname = "sequencer.sveeffects_animate_transform"
+    bl_idname = "sequencer.sveeffects_addeffect"
     bl_label = "animate_transform"
     bl_options = {'REGISTER', 'UNDO'}
     effect_type: bpy.props.StringProperty(
@@ -405,8 +405,8 @@ class SEQUENCER_PT_SVEEffects(bpy.types.Panel):
         effectT.layout(layout, effect)
 
 
-class SVEEffects_Menu(bpy.types.Menu):
-    bl_idname = "SEQUENCER_MT_sve_menu_effects"
+class SEQUENCER_MT_SVEEffects_Menu(bpy.types.Menu):
+    bl_idname = "SEQUENCER_MT_SVEEffects_Menu"
     bl_label = "Effects"
     bl_owner_id = "SEQUENCER_MT_image"
 
