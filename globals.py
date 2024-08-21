@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 from os import path
 from random import seed, random
+from tempfile import gettempdir
 
 class _G:
     strips: dict = {}
     edit_strip = None
     orig_strip = None
     action = None
-    dir: str = path.dirname(__file__)
-    dir_temp: str = path.dirname(__file__) + '/_temp'
+    dir_temp: str = gettempdir()+'/sve_bl_addon_imgs'
     _set_random: float = 0.0
 
     @property

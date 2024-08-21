@@ -12,7 +12,6 @@ from .globals import G
 
 
 def lock_tempscene():
-    # tempscene = bpy.data.scenes[G.TEMPSCENE]
     scene = bpy.context.scene
     bpy.msgbus.clear_by_owner(scene)
 
@@ -326,29 +325,6 @@ class SVEEffects_Tester(bpy.types.Operator):
 
     def execute(self, context):
         if context.active_sequence_strip == None: return {'CANCELLED'}
-
-        # meta = context.scene.sequence_editor.sequences.new_meta('test', 4, context.scene.frame_current)
-        # srcscene = bpy.data.scenes[G.edit_strip[sve.scene_source]]
-        # to_meta_sequence(srcscene, meta)
-        # try:
-        #     # target = bpy.data.scenes['Scene'].sequence_editor.sequences_all["Color"]  
-        #     # printc('effectC.all ' + str(effectC.all))
-        #     # printc('fcurveC.all ' + str(fcurveC.all))
-        #     # printc('G.strips ' + str(G.strips))
-        #     # printc('G.edit_strip ' + str(G.edit_strip))
-        #     # printc('G.action ' + str(G.action))
-        #     # printc('G.TEMPSCENE ' + str(G.TEMPSCENE))
-        #     # if sve.startend in  context.active_sequence_strip:
-        #     # effect = context.active_sequence_strip
-            
-        #     # printc(str(context.area))
-        #     # bpy.app.timers.register(lambda: printc(str(context.area)), first_interval=3, persistent= False)
-        #     printc(G.dir)
-        #     pass
-        # except Exception as exc:
-        #     printc(str(exc))
-        #     printc(str(format_exc()))
-            
 
         return {'FINISHED'}
     

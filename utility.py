@@ -137,6 +137,8 @@ def create_none_img(srcstrip = None):
         w_img = int(bpy.context.scene.render.resolution_x)
         h_img = int(bpy.context.scene.render.resolution_y)
     filename = str(w_img)+'x'+str(h_img)
+
+
     makedirs(G.dir_temp, exist_ok=True)
     filepath = '%s/%s'%(G.dir_temp, filename)
     if not path.exists(filepath):

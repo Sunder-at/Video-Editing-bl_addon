@@ -2,20 +2,22 @@
 
 bl_info = {
     "name": "Sunders-Video-Editing",
-    "blender": (2, 80, 0),
+    "description": "Animate video strips fast.",
+    "author": "SunderCode",
+    "version": (1, 0),
+    "blender": (3, 6, 2),
+    "location": "Sequencer",
+    "warning": "",
+    "doc_url": "",
+    "tracker_url": "",
+    "support": "COMMUNITY",
     "category": "Sequencer",
-    "description": "Sunders Video Editing",
 }
 import bpy
 import gpu
 
-from os import path, makedirs, listdir, unlink
-from shutil import rmtree
-# from traceback import format_exc
-# from importlib import reload
 from gpu_extras.batch import batch_for_shader
 
-# from . import bpy_ctypes, utility, sve_struct, operators, globals
 from .bpy_ctypes import get_running_op
 from .utility import change_checker, dorot, printc, try_def, bool_or, get_by_area
 from .effect_fcurve import effectC, fcurveC
@@ -244,11 +246,6 @@ def add_handle(space, *args):
     return removefun
 
 def reinstate():
-    # reload(globals)
-    # reload(bpy_ctypes)
-    # reload(utility)
-    # reload(sve_struct)
-    # reload(operators)
     G.edit_strip = None
     G.orig_strip = None
     G.strips.clear()
@@ -291,18 +288,6 @@ def reinstate():
                         add_strip(strip0)
                     fcurveC.recalc_all()
                     return
-
-    makedirs(G.dir_temp, exist_ok=True)
-    for filename in listdir(G.dir_temp):
-        filepath = G.dir_temp + '/' + filename
-        try:
-            if path.isfile(filepath) or path.islink(filepath):
-                unlink(filepath)
-            elif path.isdir(filepath):
-                rmtree(filepath)
-        except:
-            pass
-    return
 
 
 
