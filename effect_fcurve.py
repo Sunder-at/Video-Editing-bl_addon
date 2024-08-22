@@ -8,7 +8,7 @@ from .bpy_ctypes import calc_bezier
     
 class effectC:
     all: dict[str, 'effectC'] = {}
-    effect: object
+    _effect_name: str
     fcurves: set['fcurveC']
     atype: anim_base
     
@@ -40,6 +40,7 @@ class effectC:
             self.effect = effectstrip
             self.atype = anim_base.all[self.effect[sve.type]]
             self.effect[sve.type] = self.effect[sve.type]
+            
 
         if len(args) == 1:
             init1(self, *args)
@@ -47,15 +48,15 @@ class effectC:
             init3(self, *args)
         
         self.fcurves = set()
-        self.all[self.effect.as_pointer()] = self
+        self.all[self.effect.name] = self
+        G.strips.add(self.effect.name)
 
-        for fc in list(bpy.context.scene.animation_data.drivers):
+        for fc in list(G.edit_scene.animation_data.drivers):
             if 'sequences_all["%s"]'%(self.effect.name) in fc.data_path:
-                bpy.context.scene.animation_data.drivers.remove(fc)
+                G.edit_scene.animation_data.drivers.remove(fc)
 
         for prop, call in self.prop_update.items():
             call(self, self.effect[prop])
-        G.strips[self.effect.as_pointer()] = self.effect
 
         self.atype.init(self)
 
@@ -66,7 +67,6 @@ class effectC:
                 for use in sve.props[prop].use:
                     self.subscribe_prop(use)
 
-        
 
     def add_to_fcurve(self, svepath: str):
         if svepath not in fcurveC.all:
@@ -87,12 +87,14 @@ class effectC:
         fcurve.frame_recalc()
 
     def get_values(self, sve_path) -> tuple[float,float]:
+        # if self.effect == None: return 0, 0
         val0 = get_from_path(self, sve.props[sve_path].path, lambda base, prop: getattr(base, prop))
         val1 = self.effect[sve_path]
         if self.startend: val0 , val1 = val1 , val0
         return val0 , val1
     
     def set_values(self, sve_path, val0, val1):
+        # if self.effect == None: return 0, 0
         if self.startend: val0 , val1 = val1 , val0
         get_from_path(self, sve.props[sve_path].path, lambda base, prop: setattr(base, prop, val0))
         self.effect[sve_path] = val1
@@ -108,7 +110,15 @@ class effectC:
             owner=self.effect, args=(1,), options={'PERSISTENT',},
             notify=notify )
         
+    @property
+    def effect(self) -> object:
+        if self._effect_name and G.edit_scene and self._effect_name in G.edit_scene.sequence_editor.sequences:
+            return G.edit_scene.sequence_editor.sequences[self._effect_name]
+        return None
 
+    @effect.setter
+    def effect(self, effectstrip):
+        self._effect_name = effectstrip.name
     
     @property
     def name(self) -> str:
@@ -215,7 +225,7 @@ class fcurveC:
         self.path = sve.props[sve_path].path
         self.sve_path = sve_path
         self.datapath = get_from_path(G.edit_strip, self.path, lambda base, prop: base.path_from_id( prop ))
-        self.fcurve = G.action.fcurves.new( self.datapath )
+        G.action.fcurves.new( self.datapath )
         self.effects = set()
         self.keyframes = []
         self.modifiers = []
@@ -275,6 +285,7 @@ class fcurveC:
             self.modifiers.clear()
             self.modifiers = new_mf
             self.modifiers_value_recalc()
+        
             
 
     def keyframes_value_recalc(self):
@@ -362,9 +373,15 @@ class fcurveC:
         self.default = curr
         self.keyframes_value_recalc()
 
+
+
+    @property
+    def fcurve(self):
+        return G.action.fcurves.find(self.datapath)
+    
     @property
     def evaluate(self):
-        return self.fcurve.evaluate(bpy.context.scene.frame_current)
+        return self.fcurve.evaluate(G.edit_scene.frame_current)
 
     @property
     def value(self):

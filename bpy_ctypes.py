@@ -2,6 +2,7 @@
 
 import bpy
 from ctypes import *
+from .utility import printc
 import math
 # Handler type enum. Operator is 3
 WM_HANDLER_TYPE_GIZMO = 1
@@ -432,23 +433,28 @@ def init_structs():
     StructBase._structs.clear()
     ListBase._cache.clear()
 
-def get_running_op(window) -> str | None:
+def get_running_op(window) -> str | None: pass
+
+
+def get_running_op_3_x_x(window) -> str | None:
     win = wmWindow(window)
-    
     for handle in win.modalhandlers:
         if handle.type == WM_HANDLER_TYPE_OP:
             handlec = wmEventHandler_Op(addressof(handle))
             return bytes.decode(handlec.op.contents.type.contents.idname)
     return None
-            # old_value = operator_just_ran.old_value
-            # if operator_just_ran(idname) and old_value: update_effect_on(old_value, effects)
-            # update_effect_on(idname, effects)
-            # handled = True
-    # if not handled:
-    #     old_value = operator_just_ran.old_value
-    #     if operator_just_ran(False) and old_value:
-    #         update_effect_on(old_value, effects)
-    #         pass
+
+def get_running_op_4_x_x(window) -> str | None:
+    for mop in window.modal_operators:
+        if mop.bl_idname.__len__() > 0:
+            return mop.bl_idname
+    return None
+            
+
+if bpy.app.version < (4, 0, 0):
+    get_running_op = get_running_op_3_x_x
+else:
+    get_running_op = get_running_op_4_x_x
 
 def calc_bezier(v1, v2, v3, v4, point) -> float:
     def sqrt3d(dd: float) -> float:

@@ -36,34 +36,44 @@ from .operators import \
 from .globals import G
 
 
-def remove_strip(sPointer):
-    if sPointer in effectC.all:
-        for fcurve in effectC.all[sPointer].fcurves:
-            fcurve.remove_effect(effectC.all[sPointer])
-            fcurve.frame_recalc()
-        del effectC.all[sPointer]
-    del G.strips[sPointer]
+def remove_strip(name: str):
+    if name in effectC.all:
+        effect = effectC.all[name]
+        for fcurve in effect.fcurves:
+            fcurve.remove_effect(effect)
+        del effectC.all[name]
+    G.strips.remove(name)
 
-def add_strip(strip):
+def add_strip(name):
+    strip = G.edit_scene.sequence_editor.sequences[name]
     if sve.type in strip and strip[sve.type] in anim_base.all:
         effectC(strip)
     else:
-        G.strips[strip.as_pointer()] = strip
+        G.strips.add(name)
 
 # if an effect strip gets deleted/undeleted or non-effect strip is added/deleted, this keeps track
 def check_strip_ledger():
-    sequences = bpy.context.scene.sequence_editor.sequences
-    if len(G.strips) != len(sequences):
-        if len(G.strips) > len(sequences):
-            seqPointers = [seq.as_pointer() for seq in sequences]
-            for st in G.strips.copy():
-                if st not in seqPointers:
-                    remove_strip(st)
-        elif len(G.strips) < len(sequences):
-            for seq in sequences:
-                if seq.as_pointer() not in G.strips:
-                    add_strip(seq)
-            fcurveC.recalc_all()
+    if G.edit_strip == None or bpy.context.scene != G.edit_scene: return
+
+    sequences = G.edit_scene.sequence_editor.sequences
+    
+    if len(G.strips) == len(sequences): return
+
+    SEQUENCE_EDITOR = get_by_area("SEQUENCE_EDITOR")
+    
+    seqname = [seq.name for seq in sequences]
+    
+    for st in G.strips.copy():
+        if st not in seqname:
+            remove_strip(st)
+    if len(G.strips) < len(sequences):
+        for seq in seqname:
+            if seq not in G.strips:
+                add_strip(seq)
+    fcurveC.recalc_all()
+
+    with bpy.context.temp_override(area=SEQUENCE_EDITOR):
+        bpy.ops.ed.flush_edits()
 
 class check_effect_prop_change:
     effect_check: change_checker = change_checker()
@@ -71,8 +81,8 @@ class check_effect_prop_change:
 
     def __call__(self):
         strip = bpy.context.active_sequence_strip
-        if not strip or strip.as_pointer() not in effectC.all: return
-        effect: effectC = effectC.all[strip.as_pointer()]
+        if not strip or strip.name not in effectC.all: return
+        effect: effectC = effectC.all[strip.name]
         if self.effect_check(strip):
             self.prop_check.clear()
             for prop in effect.prop_update:
@@ -86,9 +96,6 @@ check_effect_prop_change = check_effect_prop_change()
 
 class check_running_op:
     def frame_update(self, effects = None):
-        # if G.edit_strip:
-        #     G.edit_strip.transform.offset_x += 0.0
-        #     G.edit_strip.transform.offset_y += 0.0
         if G.orig_strip:
             G.orig_strip.transform.offset_x += 0.0
             G.orig_strip.transform.offset_y += 0.0
@@ -162,24 +169,24 @@ class check_running_op:
 check_running_op = check_running_op()
 
 def draw_callback_seq_preview():
-    if G.edit_strip == None: return
+    if G.edit_strip == None or bpy.context.scene != G.edit_scene: return
     
-    check_effect_prop_change()
     check_strip_ledger()
+    check_effect_prop_change()
     check_running_op()
     strip = bpy.context.active_sequence_strip
     if strip and strip.select and sve.type in strip and 'transform' in strip[sve.type]:
         region = bpy.context.region
 
-        if not(bpy.context.scene.frame_current >= strip.frame_final_start and 
-            bpy.context.scene.frame_current < strip.frame_final_end): return
+        if not(G.edit_scene.frame_current >= strip.frame_final_start and 
+            G.edit_scene.frame_current < strip.frame_final_end): return
 
         if strip.type in ['IMAGE','MOVIE'] and len(strip.elements) > 0:
             resxhalf = float(strip.elements[0].orig_width) / 2.0
             resyhalf = float(strip.elements[0].orig_height) / 2.0
         else:
-            resxhalf = bpy.context.scene.render.resolution_x / 2.0
-            resyhalf = bpy.context.scene.render.resolution_y / 2.0
+            resxhalf = G.edit_scene.render.resolution_x / 2.0
+            resyhalf = G.edit_scene.render.resolution_y / 2.0
 
         offx = strip[sve.offset_x]
         offy = strip[sve.offset_y]
@@ -251,22 +258,21 @@ def reinstate():
     G.strips.clear()
     effectC.all.clear()
     fcurveC.all.clear()
-    add_handle(bpy.types.SpaceSequenceEditor, try_def(draw_callback_seq_preview), tuple(), 'PREVIEW', 'POST_PIXEL' )
     
     for scene in bpy.data.scenes:
         if scene.sequence_editor == None: continue
         for strip in scene.sequence_editor.sequences:
             if strip.channel == 2 and sve.strip_source in strip:
                 if strip[sve.strip_source] in scene.sequence_editor.sequences_all:
-                    G.edit_strip = strip
-                    G.orig_strip = scene.sequence_editor.sequences_all[ strip[sve.strip_source] ]
+                    G.edit_strip = strip.name
+                    G.edit_scene = scene.name
+                    G.orig_strip = strip[sve.strip_source]
 
                     if scene.animation_data == None:
                         scene.animation_data_create()
                     if scene.animation_data.action == None:
                         bpy.data.actions.new(scene.name)
                         scene.animation_data.action = bpy.data.actions[scene.name]
-                    G.action = scene.animation_data.action
                     
 
                     for fc in list(G.action.fcurves):
@@ -275,19 +281,20 @@ def reinstate():
 
                     lock_tempscene()
 
-
                     SEQUENCE_EDITOR = get_by_area("SEQUENCE_EDITOR")
 
                     with bpy.context.temp_override(area=SEQUENCE_EDITOR):
-                        for strip0 in scene.sequence_editor.sequences:
+                        for strip0 in G.edit_scene.sequence_editor.sequences:
                             strip0.select = False
                         G.edit_strip.select = True
                         bpy.ops.sequencer.set_range_to_strips(preview=True)
 
-                    for strip0 in scene.sequence_editor.sequences:
-                        add_strip(strip0)
+                    for strip0 in G.edit_scene.sequence_editor.sequences:
+                        add_strip(strip0.name)
                     fcurveC.recalc_all()
                     return
+        
+    add_handle(bpy.types.SpaceSequenceEditor, draw_callback_seq_preview, tuple(), 'PREVIEW', 'POST_PIXEL' )
 
 
 
@@ -303,13 +310,13 @@ classes = [
     SVEEffects_Tester,
     ]
 
+
 def register():
     for cl in classes:
         bpy.utils.register_class(cl)
     bpy.types.SEQUENCER_MT_editor_menus.append(effects_scene_menu)
     bpy.types.SEQUENCER_MT_editor_menus.append(main_scene_menu)
     bpy.app.timers.register(reinstate, first_interval=0.1, persistent= False)
-
 
 def unregister():
     for hh in handles: hh()
@@ -323,4 +330,6 @@ def unregister():
 def loader(file):
     reinstate()
 
+
 bpy.app.handlers.load_post.append(loader)
+

@@ -110,7 +110,7 @@ def add_driver(effect, driver_path: list, data_path: list):
             var.type = 'SINGLE_PROP'
             var.targets[0].data_path = dpath + '[%d]'%(index)
             var.targets[0].id_type = 'SCENE'
-            var.targets[0].id = bpy.context.scene
+            var.targets[0].id = G.edit_scene
             fc.driver.is_valid = True
     else:
         fc = drivers
@@ -119,7 +119,7 @@ def add_driver(effect, driver_path: list, data_path: list):
         var.type = 'SINGLE_PROP'
         var.targets[0].data_path = dpath
         var.targets[0].id_type = 'SCENE'
-        var.targets[0].id = bpy.context.scene
+        var.targets[0].id = G.edit_scene
         fc.driver.is_valid = True
 
 
@@ -134,8 +134,8 @@ def create_none_img(srcstrip = None):
         w_img = int(strip.elements[0].orig_width)
         h_img = int(strip.elements[0].orig_height)
     else:
-        w_img = int(bpy.context.scene.render.resolution_x)
-        h_img = int(bpy.context.scene.render.resolution_y)
+        w_img = int(G.edit_scene.render.resolution_x)
+        h_img = int(G.edit_scene.render.resolution_y)
     filename = str(w_img)+'x'+str(h_img)
 
 

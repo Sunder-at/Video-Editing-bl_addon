@@ -168,8 +168,6 @@ class typeC:
         @staticmethod
         def getter(effect: 'effectC', prop:str) -> tuple:
             return [effect.effect[prop]]
-        # def getter_to_str(effect: 'effectC', prop:str) -> str:
-        #     return sve.typeC.getter_to_str(effect, prop, __class__)
     float = float()
 typeC = typeC()
 
@@ -353,7 +351,7 @@ class anim_base:
         def prop_change(effect: 'effectC', value):
             for fc in effect.fcurves:
                 if fc.sve_path == prop:
-                    fc.keyframes_value_recalc()
+                    fc.frame_recalc()
         return prop_change
 
 
@@ -520,9 +518,6 @@ class anim_shake(anim_base):
 
 
     def new_effectstrip(self, sequences, name, channel, frame_start): 
-        # effectstrip = sequences.new_effect(name, 'ADJUSTMENT', channel, frame_start, frame_end = frame_start+1)
-        # effectstrip.channel = channel
-        # return effectstrip
         filepath = create_none_img()
         effectstrip = sequences.new_image(name, filepath, channel, frame_start)
         effectstrip.channel = channel
