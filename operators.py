@@ -98,14 +98,14 @@ class SVEEffects_AddEffect_StartEnd(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         strip = context.active_sequence_strip
-        return strip and strip.as_pointer() in effectC.all
+        return strip and strip.name in effectC.all
     
     def cancel(self, context):
         return
 
     def execute(self, context):
         strip = context.active_sequence_strip
-        effect: 'effectC' = effectC.all[strip.as_pointer()]
+        effect: 'effectC' = effectC.all[strip.name]
         
         if effect.effect[sve.startend] != self.startend:
             effect.effect[sve.startend] = self.startend
@@ -385,7 +385,7 @@ class SEQUENCER_PT_SVE_topforce(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         strip = context.active_sequence_strip
-        return strip and strip.as_pointer() in effectC.all
+        return strip and strip.name in effectC.all
     
     def draw(self, context):
         pass
@@ -406,11 +406,11 @@ class SEQUENCER_PT_SVEEffects(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         strip = context.active_sequence_strip
-        return strip and strip.as_pointer() in effectC.all
+        return strip and strip.name in effectC.all
 
     def draw(self, context):
         effect = context.active_sequence_strip
-        effectT: anim_base = effectC.all[effect.as_pointer()].atype
+        effectT: anim_base = effectC.all[effect.name].atype
 
         layout = self.layout
         layout.use_property_split = True
